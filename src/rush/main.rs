@@ -53,7 +53,10 @@ fn start(args: Vec<~str>)
 
     if !matches.free.is_empty() {
         match reader.set_to_file(matches.free.get(0).as_slice()) {
-            Err(e) => fail!("{}: {}", matches.free.get(0), e),
+            Err(e) => {
+                println!("{}: {}", matches.free.get(0), e.desc);
+                return ;
+            },
             _ => {}, 
         };
         show_prompt = false;
