@@ -74,6 +74,11 @@ impl Shell {
     // command will be replaced by a Command type (pipe, redirs, etc...)
     fn exec(&self, command: ~str) -> Result<bool, CommandErr> {
         let words: Vec<~str> = command.words().map(|s| s.to_owned()).collect();
+
+        if words.len() == 0 {
+            return Ok(false);
+        }
+
         let program = words.get(0).to_owned();
         let args = words.slice_from(1);
 
