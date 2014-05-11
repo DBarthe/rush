@@ -1,7 +1,6 @@
 
 
 use collections::HashMap;
-use std::io::process::Process;
 use std::io::{print, println};
 use std::io;
 
@@ -85,13 +84,27 @@ impl Shell {
     }
 
     fn exec_process(&self, program: ~str, args: &[~str]) -> Result<bool, CommandErr> {
+        use std::io::process::{ProcessConfig, Process};
+        use std::io::process;
+
         println!("executing program '{:s}'", program);
-        let mut child = match Process::new(program, args) {
+
+        let config = ProcessConfig {
+            program: program.as_slice(),
+            args: args,
+            stdin: process::InheritFd(0),
+            stdout: process::InheritFd(1),
+            stderr: process::InheritFd(2),
+            .. ProcessConfig::new()
+        };
+
+        let mut child = match Process::configure(config) {
             Ok(child) => child,
             Err(_) => {
-                return Err(CommandNotFound(program));
+                return Err(CommandNotFound(program.to_owned()));
             },
         };
+
         child.wait();
         println!("done");
         Ok(false)
