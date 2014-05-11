@@ -34,7 +34,7 @@ fn start(args: Vec<~str>)
     };
     if matches.opt_present("h") || matches.opt_present("help")
     {
-        println("rush 1.0.0");
+        println("rush 0.1.0");
         println("");
         println("Usage:");
         println!("  {:s} [file]", program);
@@ -44,7 +44,7 @@ fn start(args: Vec<~str>)
     }
     if matches.opt_present("V") || matches.opt_present("version")
     {
-        println("rush 1.0.0");
+        println("rush 0.1.0");
         return;
     }
 
