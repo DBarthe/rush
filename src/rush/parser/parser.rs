@@ -9,7 +9,6 @@ pub enum Command
 pub enum ParserErr
 {
     SyntaxError(~str),
-    LexerError(LexerErr),
 }
 
 pub struct Parser
