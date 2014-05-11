@@ -1,11 +1,11 @@
 use std::os;
-use rush::shell::CommandErr;
+use shell::CommandErr;
 
 pub static NAME: &'static str = "exit";
 
 pub fn builtin(args: &[~str]) -> Result<bool, CommandErr>
 {
-    println("Goodbye. :)");
+    println!("Goodbye. :)");
 
     let mut status = 0;
     if args.len() == 1

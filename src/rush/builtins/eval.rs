@@ -1,5 +1,5 @@
-use rush::shell::CommandErr;
-use rush::shell::Shell;
+use shell::CommandErr;
+use shell::Shell;
 
 pub static NAME: &'static str = "eval";
 

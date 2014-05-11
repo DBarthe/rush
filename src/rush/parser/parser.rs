@@ -12,7 +12,7 @@ pub enum ParserErr
     LexerError(LexerErr),
 }
 
-struct Parser
+pub struct Parser
 {
     command: Option<Command>
 }

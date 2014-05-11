@@ -1,117 +1,120 @@
-use std::hashmap::HashMap;
-use std::run;
-use rush::builtins;
-use rush::builtins::exit;
-use rush::parser::*;
+ 
+use collections::HashMap;
+use std::io::{print, println};
+use std::io;
 
-pub type BuiltinFn = extern fn (args: &[~str]) -> Result<bool, CommandErr>;
+use builtins;
+use builtins::exit;
+use cmd_reader::CmdReader;
+use parser::Parser;
 
-struct Shell
-{
+pub type BuiltinFn = fn (args: &[~str]) -> Result<bool, CommandErr>;
+
+pub struct Shell {
     prompt: ~str,
-    builtins: ~HashMap<~str, BuiltinFn>,
 
-    parser: ~Parser,
+    parser: Box<Parser>,
+
+    builtins: Box<HashMap<~str, BuiltinFn>>,
 }
 
-pub enum CommandErr
-{
+pub enum CommandErr {
     CommandNotFound(~str),
 }
 
-impl Shell
-{
-    pub fn new() -> Shell
-    {
-        Shell {
-            prompt: ~"$ ",
-            builtins: builtins::create_builtins(),
+impl Shell {
 
-            parser: ~Parser::new(),
+    pub fn new() -> Shell {
+        Shell {
+            prompt: "$ ".to_owned(),
+            builtins: builtins::create_builtins(),
+            parser: box Parser::new(),
         }
     }
 
-    pub fn run(&self, instream: @Reader, show_prompt: bool)
-    {
-        if show_prompt
-        {
+    pub fn run(&self, reader: &mut CmdReader, show_prompt: bool) {
+        if show_prompt {
             println("Rush started! Press Ctrl+D or type 'quit' to quit.");
         }
 
-        while !instream.eof()
-        {
-            if show_prompt
-            {
+        loop {
+
+            if show_prompt {
                 print(self.prompt);
             }
 
-            let line = instream.read_line();
-            if !instream.eof()
-            {
-                match self.exec_line(line)
-                {
-                    Ok(stop) if stop => { break; }
-                    Ok(_) => {}
-                    Err(e) => {
-                        match e
-                        {
-                            CommandNotFound(command) => {
-                                println!("Command not found: {:s}", command);
-                            }
-                        }
+            let line = match reader.read_line() {
+                Ok(line) => line,
+                Err(e) => {
+                    if e.kind == io::EndOfFile {
+                        // avoid warning temporary
+                        match exit::builtin([]) {
+                            _ => {}
+                        };
                     }
-                }
+                    else {
+                        println!("rush: IoError: {}", e);
+                    }
+                    break;
+               },
+            };
+
+            match self.exec_line(line) {
+                Ok(stop) if stop => { break; }
+                Ok(_) => {},
+                Err(e) => match e {
+                    CommandNotFound(command) => println!("Command not found: {:s}", command),
+                },
             }
-            else
-            {
-                exit::builtin([]);
-            }
         }
     }
 
-    pub fn exec_line(&self, line: ~str) -> Result<bool, CommandErr>
-    {
-        match self.parser.parse(line)
-        {
-            Ok(command) => self.exec(command),
-            Err(e) => fail!("Error: {:?}", e),
-        }
+    pub fn exec_line(&self, line: ~str) -> Result<bool, CommandErr> {
+        self.exec(line)
     }
 
-}
+    // command will be replaced by a Command type (pipe, redirs, etc...)
+    fn exec(&self, command: ~str) -> Result<bool, CommandErr> {
+        let words: Vec<~str> = command.words().map(|s| s.to_owned()).collect();
 
-impl Shell
-{
-    fn exec(&self, command: Command) -> Result<bool, CommandErr>
-    {
-        match command
-        {
-            Simple(cmd) => self.exec_simple(cmd),
-            _ => Ok(false),
+        if words.len() == 0 {
+            return Ok(false);
         }
-    }
 
-    fn exec_simple(&self, command: ~[~str]) -> Result<bool, CommandErr>
-    {
-        let program = command[0].to_owned();
-        let args = command.slice_from(1);
+        let program = words.get(0).to_owned();
+        let args = words.slice_from(1);
 
-        match self.builtins.find(&program)
-        {
+        match self.builtins.find(&program) {
             Some(handler) => (*handler)(args),
             None => self.exec_process(program, args),
         }
     }
 
-    fn exec_process(&self, program: ~str, args: &[~str]) -> Result<bool, CommandErr>
-    {
-        let mut options = run::ProcessOptions::new();
-        options.in_fd = Some(0);
-        options.out_fd = Some(1);
-        options.err_fd = Some(2);
+    fn exec_process(&self, program: ~str, args: &[~str]) -> Result<bool, CommandErr> {
+        use std::io::process::{ProcessConfig, Process};
+        use std::io::process;
 
-        let _process = run::Process::new(program, args, options);
+        println!("executing program '{:s}'", program);
 
+        let config = ProcessConfig {
+            program: program.as_slice(),
+            args: args,
+            stdin: process::InheritFd(0),
+            stdout: process::InheritFd(1),
+            stderr: process::InheritFd(2),
+            .. ProcessConfig::new()
+        };
+
+        let mut child = match Process::configure(config) {
+            Ok(child) => child,
+            Err(_) => {
+                return Err(CommandNotFound(program.to_owned()));
+            },
+        };
+
+        child.wait();
+        println!("done");
         Ok(false)
     }
+
 }

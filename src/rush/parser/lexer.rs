@@ -11,7 +11,7 @@ pub enum LexerErr
     UnknownChar(char),
 }
 
-struct Lexer
+pub struct Lexer
 {
     data: ~str,
     index: uint,
