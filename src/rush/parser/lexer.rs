@@ -1,7 +1,8 @@
 
+
 /// A token is stored via this enum which allow
 /// certains types to keep the original lexeme.
-#[deriving(Clone)]
+#[deriving(Clone, Show)]
 pub enum Token {
     Word(~str),
     Operator(~str),
@@ -68,7 +69,6 @@ impl LexerContext {
     }
 }
 
-
 /// The lexer main structure.
 pub struct Lexer {
     /// The raw input.
@@ -78,6 +78,9 @@ pub struct Lexer {
     /// Informations about the next token to be returned.
     context: LexerContext,
 }
+
+/// List of operators used by Lexer.
+static OPERATORS : [&'static str, ..10] = ["&&", "||", ";", "<<", ">>", "<&", ">&", "<>", "<<-", ">|"];
 
 impl Lexer {
 
@@ -100,7 +103,7 @@ impl Lexer {
     }
 
     /// Return the current character.
-    fn peek_one(&mut self) -> char {
+    fn peek_one(&self) -> char {
         if self.index >= self.data.len() {
             '\0'
         }
@@ -114,7 +117,15 @@ impl Lexer {
         let lexeme = self.context.current_chars.to_owned();
         match self.context.expected_token {
             Some(ref token) => match *token {
-                Word(_) => Word(lexeme),
+                Word(_) => {
+                    if regex!(r"^\d+$").find(lexeme).is_some()
+                            && (self.peek_one() == '<' || self.peek_one() == '>') {
+                        IoNumber(lexeme)
+                    }
+                    else {
+                        Word(lexeme)
+                    }   
+                },
                 Operator(_) => Operator(lexeme),
                 IoNumber(_) => IoNumber(lexeme),
                 NewLine => NewLine,
@@ -122,6 +133,33 @@ impl Lexer {
             None => Word(lexeme),
         }
     }
+
+
+    /// Look if the parameter lexeme is the first part of an operator
+    fn is_operator_start(lexeme: &str) -> bool {
+        for op_str in OPERATORS.iter() {
+            if lexeme.len() <= op_str.len() && op_str.slice(0, lexeme.len()) == lexeme {
+                return true;
+            }
+        }
+        false 
+    }
+
+    /// Look if the current lexeme plus the input character
+    /// is the first part of an operator.
+    fn reconize_operator_start(&self) -> bool {
+        let mut lexeme = self.context.current_chars.clone();
+        lexeme.push_char(self.peek_one());
+        let lexeme = lexeme.as_slice();
+        return Lexer::is_operator_start(lexeme)
+    }
+
+    /// Add the current input char to the current lexeme and consume it.
+    fn add_it(&mut self) {
+        let c = self.consume_one();
+        self.context.current_chars.push_char(c);
+    }
+
 }
 
 impl Iterator<Token> for Lexer {
@@ -144,13 +182,18 @@ impl Iterator<Token> for Lexer {
             }
 
             // check if current token is quoted and store the result in 'quoted'
-            let quoted = self.context.quoted.is_none();
+            let quoted = self.context.quoted.is_some();
 
             // if previous is part of operator
             if !quoted && self.context.expected_token.is_some()
                 && self.context.expected_token.as_ref().unwrap().is_operator() {
                     // if current can be join to form longer operator => add it
-                    // else => delimit
+                    if self.reconize_operator_start() {
+                        self.add_it();
+                    }
+                    else {
+                        return Some(self.delimit_token());
+                    }
             }
 
             // if is a quoting chars (',",\)
@@ -158,16 +201,24 @@ impl Iterator<Token> for Lexer {
                 // set quoted, add it. token become word, fetch until the ending quote inclus.
                 self.context.quoted = Some(c);
                 self.context.expected_token = Some(Word("".to_owned()));
-                self.context.current_chars.push_char(c);
-                self.consume_one();
+                self.add_it();
             }
 
             else if !quoted && (c == '$' || c == '`') {
-                // if first subsitution ($, `) => special recursive function
+                // if first substitution ($, `) => special recursive function
+                fail!("substitution not implemented by lexer for now")
             }
 
             // if (not quoted begining of operator => delimit or start operator
-            // test todo
+            else if !quoted && Lexer::is_operator_start(::std::str::from_char(c)) {
+                if self.context.empty() {
+                    self.context.expected_token = Some(Operator("".to_owned()));
+                    self.add_it();
+                }
+                else {
+                    return Some(self.delimit_token());
+                }
+            } 
 
             // if blank => discard or delimit
             else if !quoted && (c == ' ' ||  c == '\t') {
@@ -180,7 +231,10 @@ impl Iterator<Token> for Lexer {
             // if \n => delimit or return new line
             else if c == '\n' {
                 return match self.context.empty() {
-                    true => Some(NewLine),
+                    true =>  {
+                        self.consume_one();
+                        Some(NewLine)
+                    },
                     false => Some(self.delimit_token()),
                 }
             }
@@ -188,7 +242,7 @@ impl Iterator<Token> for Lexer {
             // if prev is word => append it
             else if self.context.expected_token.is_some()
                 && self.context.expected_token.as_ref().unwrap().is_word() {
-                    self.context.current_chars.push_char(c);
+                    self.add_it();
                     // if the current char is quoted and if the quote section
                     // is ending now => unset the quote status
                     if quoted && (self.context.quoted.unwrap() == '\\'
@@ -204,17 +258,19 @@ impl Iterator<Token> for Lexer {
                 self.consume_one();
                 loop {
                     let c = self.peek_one();
-                    if c == '\n' && c == '\0' {
+                    if c == '\n' || c == '\0' {
                         break;
                     }
-                    self.consume_one();
+                    else {
+                        self.consume_one();
+                    }
                 }
             }
 
             // else => new word
             else {
                 assert!(self.context.expected_token.is_none());
-                self.context.current_chars.push_char(c);
+                self.add_it();
                 self.context.expected_token = Some(Word("".to_owned()));
             }
         }

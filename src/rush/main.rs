@@ -6,6 +6,10 @@
 #![license = "GPLv3"]
 
 #![feature(globs)]
+#![feature(phase)]
+
+extern crate regex;
+#[phase(syntax)] extern crate regex_macros;
 
 extern crate getopts;
 extern crate collections;
@@ -19,8 +23,6 @@ pub mod shell;
 pub mod cmd_reader;
 pub mod parser;
 
-
-
 fn start(args: Vec<~str> )
 {
     let program = args.get(0).clone();
@@ -28,13 +30,11 @@ fn start(args: Vec<~str> )
         getopts::optflag("h", "help", "display this help and exit"),
         getopts::optflag("V", "version", "output version information and exit"),
     ];
-    let matches = match getopts::getopts(args.tail(), opts)
-    {
+    let matches = match getopts::getopts(args.tail(), opts) {
         Ok(m) => m,
         Err(f) => fail!(f.to_err_msg()),
     };
-    if matches.opt_present("h") || matches.opt_present("help")
-    {
+    if matches.opt_present("h") || matches.opt_present("help") {
         println("rush 0.1.0");
         println("");
         println("Usage:");
@@ -43,8 +43,7 @@ fn start(args: Vec<~str> )
         print(getopts::usage("Rush Shell", opts));
         return;
     }
-    if matches.opt_present("V") || matches.opt_present("version")
-    {
+    if matches.opt_present("V") || matches.opt_present("version") {
         println("rush 0.1.0");
         return;
     }
@@ -62,7 +61,7 @@ fn start(args: Vec<~str> )
         };
         show_prompt = false;
     }
-
+        
     let shell = shell::Shell::new();
     shell.run(&mut reader, show_prompt);
 }

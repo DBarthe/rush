@@ -7,6 +7,7 @@ use builtins;
 use builtins::exit;
 use cmd_reader::CmdReader;
 use parser::Parser;
+use parser::lexer::Lexer;
 
 pub type BuiltinFn = fn (args: &[~str]) -> Result<bool, CommandErr>;
 
@@ -21,6 +22,16 @@ pub struct Shell {
 pub enum CommandErr {
     CommandNotFound(~str),
 }
+
+
+fn test_lexer(line: &str) {
+    let mut lexer = Lexer::new(line.to_owned());
+    for token in lexer {
+        print!("{} -> ", token);
+    }
+    println!("EOF");
+}
+
 
 impl Shell {
 
@@ -58,6 +69,8 @@ impl Shell {
                     break;
                },
             };
+
+            test_lexer(line);
 
             match self.exec_line(line) {
                 Ok(stop) if stop => { break; }
@@ -113,5 +126,4 @@ impl Shell {
         println!("done");
         Ok(false)
     }
-
 }
