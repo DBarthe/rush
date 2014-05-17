@@ -89,28 +89,25 @@ impl Shell {
     }
 
     fn exec_process(&self, program: ~str, args: &[~str]) -> Result<bool, CommandErr> {
-        use std::io::process::{ProcessConfig, Process};
         use std::io::process;
+        use std::io::process::Command;
 
         println!("executing program '{:s}'", program);
 
-        let config = ProcessConfig {
-            program: program.as_slice(),
-            args: args,
-            stdin: process::InheritFd(0),
-            stdout: process::InheritFd(1),
-            stderr: process::InheritFd(2),
-            .. ProcessConfig::new()
-        };
+        let mut command = Command::new(program.to_owned());
+        command.args(args)
+                .stdin(process::InheritFd(0))
+                .stdout(process::InheritFd(1))
+                .stderr(process::InheritFd(2));
 
-        let mut child = match Process::configure(config) {
+        let mut child = match command.spawn() {
             Ok(child) => child,
             Err(_) => {
                 return Err(CommandNotFound(program.to_owned()));
             },
         };
 
-        child.wait();
+        child.wait().unwrap();
         println!("done");
         Ok(false)
     }
