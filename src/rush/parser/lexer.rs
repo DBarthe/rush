@@ -1,5 +1,4 @@
 
-
 /// A token is stored via this enum which allow
 /// certains types to keep the original lexeme.
 #[deriving(Clone, Show)]
@@ -102,6 +101,18 @@ impl Lexer {
         return c;
     }
 
+    /// consume n next characters. (move forward the index)
+    fn consume_n(&mut self, n: uint) -> ~str {
+        let substr = self.peek_n(n);
+        if self.index + n >= self.data.len() {
+            self.index = self.data.len();
+        }
+        else {
+            self.index += n;
+        }
+        substr
+    }
+
     /// Return the current character.
     fn peek_one(&self) -> char {
         if self.index >= self.data.len() {
@@ -109,6 +120,29 @@ impl Lexer {
         }
         else {
             self.data[self.index] as char
+        }
+    }
+
+    /// Return the n (or minus) next characters.
+    fn peek_n(&self, n: uint) -> ~str {
+        if self.index >= self.data.len() {
+            "".to_owned()
+        }
+        else if self.index + n >= self.data.len() {
+            self.data.slice_from(self.index).to_owned()
+        }
+        else {
+            self.data.slice(self.index, self.index + n).to_owned()
+        }
+    }
+
+    /// Return the character at the current position + idx.
+    fn peek_at(&self, idx: uint) -> char {
+        if self.index + idx >= self.data.len() {
+            '\0'
+        }
+        else {
+            self.data[self.index + idx] as char
         }
     }
 
@@ -134,7 +168,6 @@ impl Lexer {
         }
     }
 
-
     /// Look if the parameter lexeme is the first part of an operator
     fn is_operator_start(lexeme: &str) -> bool {
         for op_str in OPERATORS.iter() {
@@ -158,6 +191,104 @@ impl Lexer {
     fn add_it(&mut self) {
         let c = self.consume_one();
         self.context.current_chars.push_char(c);
+    }
+
+    /// Add the n (maximum) next characters to the current lexeme and consume it.
+    fn add_them(&mut self, n: uint) {
+        let chars = self.consume_n(n);
+        self.context.current_chars.push_str(chars);
+    }
+
+    /// Called when the lexer encouters a start of subsitution.
+    /// Consume this start, and return the approriate closing symbol.
+    fn get_closing_substitution_symbol(&mut self) -> Option<&'static str> {
+        // I know this statement is dirty,
+        // maybe a less efficient but more readable method should be better ?
+        if self.peek_one() == '`' { // backquote (command substitution)
+            self.add_it();
+            Some("`")
+        }
+        else if self.peek_one() == '$' {
+            if self.peek_at(1) == '(' {
+                if self.peek_at(2) == '(' { // arithmetic substitution
+                    self.add_them(3);
+                    Some("))")
+                } 
+                else {  // command substitution
+                    self.add_them(2);
+                    Some(")")
+                }
+            }
+            else if self.peek_at(1) == '{' { // parameter substitution
+                self.add_them(2);
+                Some("}")
+            }
+            else { // simple parameter
+                self.add_it();
+                None
+            }    
+        }
+        else {
+            unreachable!();
+        }
+    }
+
+    /// Recursive function to consume substitution (taking care of quoting).
+    fn consume_substitution(&mut self) {
+        // Look the substitution type and set the
+        // corresponding ending symbol.
+        let closing_symbol = match self.get_closing_substitution_symbol() {
+            Some(sym) => sym,
+            None => {
+                return ;
+            },
+        };
+
+        loop {
+            let c = self.peek_one();
+            let quoted = self.context.quoted.is_some();
+
+            if c == '\0' {
+                return ;
+            }
+            else if !quoted && (c == '\'' || c == '"') {
+                self.context.quoted = Some(c);
+                self.add_it();
+            }
+            else if c == '\\' {
+                if self.context.empty() {
+                    self.context.expected_token = Some(Word("".to_owned()));
+                }
+                self.add_it();
+                self.escape_next_char();
+            }
+            else if !quoted && self.peek_n(closing_symbol.len()).as_slice() == closing_symbol {
+                self.add_them(closing_symbol.len());
+                return ;
+            }
+            else if !quoted && (c == '`' || c == '$') {
+                self.consume_substitution();
+            }
+            else if quoted && self.context.quoted.unwrap() == c {
+                self.context.quoted = None;
+                self.add_it();
+            }
+            else {
+                if quoted && self.context.quoted.unwrap() == '\\' {
+                    self.context.quoted = None; 
+                }
+                self.add_it();
+            }
+        }
+    }
+
+    fn escape_next_char(&mut self) {
+        match self.peek_one() {
+            '\n' | '\0' => {},
+            _ => {
+                self.add_it();
+            }
+        }
     }
 
 }
@@ -195,18 +326,28 @@ impl Iterator<Token> for Lexer {
                         return Some(self.delimit_token());
                     }
             }
-
-            // if is a quoting chars (',",\)
-            else if !quoted && (c == '\'' || c == '"' || c == '\\') {
+            // if is a quoting chars (',")
+            else if !quoted && (c == '\'' || c == '"') {
                 // set quoted, add it. token become word, fetch until the ending quote inclus.
                 self.context.quoted = Some(c);
-                self.context.expected_token = Some(Word("".to_owned()));
+                if self.context.empty() {
+                    self.context.expected_token = Some(Word("".to_owned()));
+                }
                 self.add_it();
             }
+            // if is escape character
+            else if c == '\\' {
+                if self.context.empty() {
+                    self.context.expected_token = Some(Word("".to_owned()));
+                }
+                self.add_it();
+                self.escape_next_char();
+            }
 
+            // if first substitution ($, `) => special recursive function
             else if !quoted && (c == '$' || c == '`') {
-                // if first substitution ($, `) => special recursive function
-                fail!("substitution not implemented by lexer for now")
+                self.context.expected_token = Some(Word("".to_owned()));
+                self.consume_substitution();
             }
 
             // if (not quoted begining of operator => delimit or start operator
