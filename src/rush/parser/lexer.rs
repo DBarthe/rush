@@ -255,7 +255,7 @@ impl Lexer {
                 self.context.quoted = Some(c);
                 self.add_it();
             }
-            else if c == '\\' {
+            else if (!quoted || self.context.quoted.unwrap() != '\'') && c == '\\' {
                 if self.context.empty() {
                     self.context.expected_token = Some(Word("".to_owned()));
                 }
@@ -335,8 +335,8 @@ impl Iterator<Token> for Lexer {
                 }
                 self.add_it();
             }
-            // if is escape character
-            else if c == '\\' {
+            // if is escape character (not in simple quote)
+            else if c == '\\' && (!quoted || self.context.quoted.unwrap() != '\'') {
                 if self.context.empty() {
                     self.context.expected_token = Some(Word("".to_owned()));
                 }
